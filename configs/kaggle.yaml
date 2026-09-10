@@ -1,0 +1,57 @@
+# Config for Kaggle: 1x T4 (16GB), Mamba2 2.7B backbone FROZEN,
+# we only train the adapters (TTT/JEPA/HDC/lm_head).
+#
+# NOTE: train.py currently does NOT support multi-GPU (DDP) or gradient
+# accumulation - it's a simple loop on a single device. So we use one
+# of the two available T4s (the second stays idle for now; DDP can be
+# added later if a single GPU turns out to be a time bottleneck).
+
+tokenizer:
+  mode: hf_pretrained
+  hf_repo: AntonV/mamba2-2.7b-hf
+
+backbone:
+  mode: hf_pretrained
+  repo_id: AntonV/mamba2-2.7b-hf
+  freeze: true                  # backbone is 100% frozen - only adapters are trainable
+  torch_dtype: float16          # T4/Turing: no HW acceleration for bfloat16 on tensor cores
+  gradient_checkpointing: false # unnecessary with freeze=true (no backward through the backbone)
+  config_overrides:
+    chunk_size: 32               # CRITICAL for T4 16GB: the default chunk_size (256) in
+                                  # Mamba2's "naive"/torch_forward path creates an
+                                  # intermediate tensor with memory ~ b*seq_len*chunk_size*heads*state*4B
+                                  # (linear in chunk_size) - at 256 that's over 40GB.
+                                  # transformers prefers torch_forward for training anyway
+                                  # (cuda_kernels_forward is slower on long
+                                  # sequences without cache), so CUDA kernels don't help here -
+                                  # the only way is to reduce chunk_size.
+
+model:
+  ttt_rank: 8
+  ttt_inner_lr: 0.1
+  ttt_inner_steps: 1
+  jepa_hidden_mult: 2
+  ema_decay: 0.996
+  hdc_dim: 10000
+  mask_ratio: 0.25
+  max_self_correction_attempts: 3
+
+train:
+  train_file: kaggle/corpus_logic.txt
+  seq_len: 256                  # see the comment next to chunk_size - this is a safe
+                                 # combination verified on T4 16GB (smoke test OK)
+  batch_size: 1                 # fits safely with chunk_size=32 and seq_len=256;
+                                 # 5GB attempts with batch=4/seq=512 caused an OOM (only 270MB
+                                 # free after loading the backbone) - can be carefully
+                                 # increased later, measuring with nvidia-smi
+  steps: 15000                  # you'll get cut off by the session time limit anyway, not by this
+  lr: 0.0002
+  weight_decay: 0.01
+  jepa_loss_weight: 1.0
+  lm_loss_weight: 1.0
+  log_every: 20
+  ckpt_every: 250                # more often than default - Kaggle can kill the session at any moment
+  ckpt_dir: checkpoints
+  device: cuda
+  seed: 42
+  amp: true                      # amp_dtype chosen automatically (float16 on T4)

@@ -1,0 +1,38 @@
+# Optimized config v2 for i5-10400F (Performance + Quality)
+
+tokenizer:
+  mode: hf_pretrained          # tiktoken | hf_pretrained | train_bpe | byte_fallback
+  hf_repo: state-spaces/mamba-130m-hf
+
+backbone:
+  mode: hf_pretrained          # custom_mamba | hf_pretrained
+  repo_id: state-spaces/mamba-130m-hf
+  freeze: true                 # FROZEN — the i5 only trains adapters, TTT and JEPA (~59M params)
+  torch_dtype: float32         # Native FP32 for AVX2
+  gradient_checkpointing: false # Disabled! Frozen weights don't need checkpointing, no CPU overhead
+
+model:
+  ttt_rank: 8                  # Micro-LoRA fast-weights (dim x rank)
+  ttt_inner_lr: 0.1
+  ttt_inner_steps: 1           # 1 step is enough — no looping the TTT loop on CPU
+  jepa_hidden_mult: 2
+  ema_decay: 0.996
+  hdc_dim: 10000
+  mask_ratio: 0.25
+  max_self_correction_attempts: 3 # Reduced recruitment of Z3 steps for a clean loop
+
+train:
+  train_file: data/corpus.txt
+  seq_len: 128                 # Context quality preserved for token prediction
+  batch_size: 16               # Good utilization of 6 CPU cores
+  steps: 3000                  # 3000 steps is enough to bring up the adapter features
+  lr: 3e-4                     # High LR for fresh layers (JEPA / TTT / Head)
+  weight_decay: 0.01
+  jepa_loss_weight: 1.0
+  lm_loss_weight: 1.0
+  log_every: 20                # More frequent logs (see progress every few dozen seconds)
+  ckpt_every: 500              # Save every 500 steps
+  ckpt_dir: checkpoints
+  device: cpu
+  seed: 42
+  amp: false

@@ -1,0 +1,18 @@
+[tool.ruff]
+target-version = "py311"
+line-length = 100
+
+[tool.ruff.lint]
+select = [
+    "E", "W",  # pycodestyle
+    "F",       # Pyflakes (real logic errors and missing imports)
+    "B",       # flake8-bugbear
+    "UP",      # pyupgrade
+    "SIM",     # flake8-simplify
+]
+ignore = [
+    "N806",    # Uppercase variables in functions (e.g. Abar, Bx_c)
+    "N803",    # Uppercase arguments
+    "PLR0913", # Too many arguments in a function
+    "E501",    # Lines longer than the limit
+]
